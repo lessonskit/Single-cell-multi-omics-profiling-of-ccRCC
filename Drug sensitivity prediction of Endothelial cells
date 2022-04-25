@@ -1,0 +1,145 @@
+rm(list = ls())
+
+library(Seurat)
+library(ridge)
+library(car)
+library(pRRophetic)
+
+Endothelialcell <- readRDS("Endothelial.rds")
+
+Endothelialcell.matrix <-  Endothelialcell[["RNA"]]@scale.data
+Endothelialcell.matrix <- Matrix::as.matrix(tumorcell.matrix)
+
+dim(Endothelialcell.matrix)
+library(GSVA)
+###BiocManager::install("GSVA")
+library(limma)
+
+library(GSEABase)
+
+Gmt <- getGmt("./c2.all.v7.4.symbols.gmt")
+Pathways <- c("REACTOME_SIGNALING_BY_EGFR","REACTOME_MTOR_SIGNALLING","REACTOME_RAF_ACTIVATION",
+              "PID_VEGFR1_2_PATHWAY","GAUTSCHI_SRC_SIGNALING","REACTOME_MAPK_FAMILY_SIGNALING_CASCADES",
+              "PID_MET_PATHWAY","REACTOME_SIGNALING_BY_SCF_KIT","REACTOME_PI3K_AKT_SIGNALING_IN_CANCER",
+              "REACTOME_SIGNALING_BY_FGFR","PID_PDGFRB_PATHWAY",'PID_PDGFRA_PATHWAY')
+
+Gmt2 <- Gmt[names(Gmt) %in% Pathways]
+
+set.seed(121)
+#########Pathway activity GSVA was calculated
+gsvaOut <- gsva(Endothelialcell.matrix,Gmt2,verbose=TRUE,parallel.sz=40)
+
+save(gsvaOut,file = 'EndothelialcellGSVE.Rda')
+
+#########What medications are available
+data(PANCANCER_IC_Tue_Aug_9_15_28_57_2016)
+possibleDrugs2016 <- unique( drugData2016$Drug.name)
+a <- as.data.frame(possibleDrugs2016)
+
+################
+library(pRRophetic)
+drugs <- c("Axitinib","Crizotinib","Dasatinib","Erlotinib","Foretinib","Gefitinib",
+           "Pazopanib","Sorafenib","Sunitinib","Temsirolimus")
+
+
+########
+predictedPtype <- predictedBoxdat <- list()
+for(i in drugs){
+  set.seed(121)
+  cat(i," starts!\n")
+  predictedPtype[[i]] <- pRRopheticPredict(as.matrix(Endothelialcell.matrix),drug = i,
+                                           tissueType = "all",selection = 1,dataset = "cgp2016")
+  predictedBoxdat[[i]] <- data.frame("est.ic50"=predictedPtype[[i]],
+                                     "Clust"= tumorcell@meta.data$seurat_clusters,
+                                     row.names = names(predictedPtype[[i]])) 
+}
+
+save(predictedPtype,predictedBoxdat,file = "EndothelialcellIC50.Rda")
+
+####2014
+b <- pRRopheticPredict(as.matrix(Endothelialcell.matrix),drug = "Afatinib", tissueType = "all")
+
+##############
+load('EndothelialcellGSVE.Rda')
+library(data.table)
+library(ggplot2)
+library(ggsci)
+library(cowplot)   
+###scale normalization
+
+gsvaOut <- as.data.frame(scale(t(gsvaOut),center = T,scale = F))##b
+dim(gsvaOut)
+gsvaOut$Group <- Endothelialcell@meta.data$seurat_clusters
+length(Endothelialcell@meta.data$seurat_clusters)
+
+gsvaRest <- reshape2::melt(gsvaOut,var="Var1")
+
+
+library(ggpubr)
+library(ggsignif)
+#unique(gsvaRest$Var1)
+gsvaRest$Var1 <- gsub("PID_","",gsvaRest$Var1)
+gsvaRest$Var1 <- gsub("REACTOME_","",gsvaRest$Var1)
+gsvaRest$Var1 <- gsub("GAUTSCHI_","",gsvaRest$Var1)
+unique(gsvaRest$Var1)
+varname <- c("SRC\nPATHWAY","MET\nPATHWAY","PDGFRB\nPATHWAY",
+             "PDGFRA\nPATHWAY","VEGFR1_2\nPATHWAY",
+             "SCF_KIT\nPATHWAY","EGFR\nPATHWAY","FGFR\nPATHWAY",
+             "PI3K_AKT\nPATHWAY", "MAPK\nPATHWAY")
+
+dim(gsvaRest)
+
+gsvaRest$Pathway <- rep(varname,length(gsvaRest$Var1)/10)
+table(gsvaRest$Group)
+comp <- list(c("6","12"),c("6","19"),c("6","21"),c("12","19"),c("12","21"),c("19","21"))
+p1 <- ggplot(gsvaRest,aes(x=Group,y=value,fill=Group)) +
+  geom_boxplot(aes(fill=Group),outlier.colour = "white") +
+  scale_fill_npg() +
+  facet_grid(cols = vars(gsvaRest$Pathway),switch = "x") +
+  stat_compare_means(comparisons = comp,
+                     method = "t.test",
+                     label = "p.signif",
+                     size=3,
+                     vjust = 0.5,
+                     tip.length = 0.01,
+                     symnum.args = list(cutpoints = c(0,0.0001, 0.001,0.01, 0.05, 1), 
+                                        symbols = c("****","***","**", "*", "ns")))+ 
+  theme_bw() +
+  scale_y_continuous(expand = c(0,0),limits = c(-1.5,2.6)) +
+  ylab(label = "GSVA Score") +
+  theme(axis.title.x = element_blank(),
+        legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) 
+p1
+
+save_plot(p1,filename = "EndothelialcellGSVA.pdf",base_height = 4,base_width = 12)
+
+drugBoxdat <- predictedBoxdat[[1]]
+for (i in 2:length(drugs)) {
+  drugBoxdat <- rbind(drugBoxdat,predictedBoxdat[[i]])
+}
+drugBoxdat$drugs <- rep(drugs,each=nrow(predictedBoxdat[[1]]))
+
+p2 <- ggplot(drugBoxdat,aes(x=Clust, y=est.ic50,fill=Clust)) +
+  geom_boxplot(aes(fill = Clust),outlier.shape = NA) +
+  scale_fill_npg() +
+  facet_grid(cols = vars(drugBoxdat$drug),switch = "x") +
+  stat_compare_means(comparisons = comp,
+                     method = "t.test",
+                     label = "p.signif",
+                     size=3,
+                     vjust = 0.5,
+                     tip.length = 0.01,
+                     symnum.args = list(cutpoints = c(0, 0.001,0.01, 0.05, 1), 
+                                        symbols = c("***","**", "*", "ns")))+ 
+  theme_bw() +
+  scale_y_continuous(expand = c(0,0),limits = c(-5,12)) +
+  ylab(label = "Predicted drug sensitivity (IC50)") + 
+  theme(axis.title.x = element_blank(),
+        legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) 
+
+p2
+save_plot(p2,filename = "EndothelialcellIC50.pdf",base_height = 4,base_width = 12)

@@ -1,0 +1,82 @@
+####velocyto
+
+library(velocyto.R)
+library(pagoda2)
+library(Seurat)
+.libPaths(c("/data_8t/file/teacher/yuzhenyuan/R_packages/R/x86_64-pc-linux-gnu-library/4.0", .libPaths()))
+library(SeuratWrappers)
+load("/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/mRNA19_PC30.RData")
+loom= readRDS(file= "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom.rds")
+
+##load("/home/rstudio/workspace/mRNA19_PC30.RData")
+loom= readRDS(file= "/home/rstudio/workspace/loom.rds")##
+
+####Prepare in advance
+RCC81 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC81_result.loom")
+RCC84 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC84_result.loom")
+RCC86 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC86_result.loom")
+RCC87 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC87_result.loom")
+RCC94 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC94_result.loom")
+RCC96 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC96_result.loom")
+RCC99 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC99_result.loom")
+RCC100 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC100_result.loom")
+RCC101 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC101_result.loom")
+RCC103 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC103_result.loom")
+RCC104 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC104_result.loom")
+RCC106 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC106_result.loom")
+RCC112 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC112_result.loom")
+RCC113 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC113_result.loom")
+RCC114 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC114_result.loom")
+RCC115 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC115_result.loom")
+RCC116 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC116_result.loom")
+RCC119 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC119_result.loom")
+RCC120 <- ReadVelocity(file = "/data_8t/file/teacher/yuzhenyuan/ATAC_mRNA/metadata/loom/RCC120_result.loom")
+kid81 <- as.Seurat(x = RCC81)
+kid84 <- as.Seurat(x = RCC84)
+kid86 <- as.Seurat(x = RCC86)
+kid87 <- as.Seurat(x = RCC87)
+kid94 <- as.Seurat(x = RCC94)
+kid96 <- as.Seurat(x = RCC96)
+kid99 <- as.Seurat(x = RCC99)
+kid100 <- as.Seurat(x = RCC100)
+kid101 <- as.Seurat(x = RCC101)
+kid103 <- as.Seurat(x = RCC103)
+kid104 <- as.Seurat(x = RCC104)
+kid106 <- as.Seurat(x = RCC106)
+kid112 <- as.Seurat(x = RCC112)
+kid113 <- as.Seurat(x = RCC113)
+kid114 <- as.Seurat(x = RCC114)
+kid115 <- as.Seurat(x = RCC115)
+kid116 <- as.Seurat(x = RCC116)
+kid119 <- as.Seurat(x = RCC119)
+kid120 <- as.Seurat(x = RCC120)
+mRCC <- merge(x = kid81, y = list(kid84, kid86, kid87, kid94, kid96, kid99, kid100, kid101, kid103, kid104, kid106, kid112, kid113, kid114, kid115, kid116, kid119, kid120))####Save it as a loom file
+
+
+seurate_data <- mRCC
+new.cluster.ids <- c("ccRCC 1", "NK cells", "CD8+ T cells", "CD4+ T cells", "TAM 1", "CAF", "Endothelial cells 1", "Monocytes","ccRCC 2","Exhausted T cells","Dendritic cells","TAM 2","Endothelial cells 2","Proliferative T cells 1",
+"ccRCC 3","Plasma cells","B cells","Mast cells","ccRCC 4","Endothelial cells 3","Proliferative T cells 2","Endothelial cells 4")
+names(new.cluster.ids) <- levels(mRCC)
+mRCC <- RenameIdents(mRCC, new.cluster.ids)
+Tumor=subset(mRCC, idents = c("ccRCC 1","ccRCC 2","ccRCC 3","ccRCC 4"))
+
+Tumor_cell_id <- paste0(gsub('mRCC', 'RCC', Tumor@meta.data$old.ident), "_result:", gsub("-\\d+_\\d+",'x',rownames(Tumor@meta.data)))
+rownames(Tumor@meta.data) <- Tumor_cell_id
+Tumor_loom <- loom[,Tumor_cell_id]
+Tumor_loom <- SCTransform(object = Tumor_loom, assay = "spliced")
+
+Tumor_loom <- RunPCA(object = Tumor_loom, verbose = FALSE)
+Tumor_loom <- RunVelocity(object = Tumor_loom, deltaT = 1, kCells = 25, fit.quantile = 0.02, n.cores=45)
+
+ident.colors <- (scales::hue_pal())(n = length(x = levels(x = Tumor)))
+names(x = ident.colors) <- levels(x = Tumor)
+cell.colors <- ident.colors[Idents(object = Tumor)]
+names(x = cell.colors) <- Tumor_cell_id
+rownames(Tumor@reductions$umap@cell.embeddings) <- Tumor_cell_id
+emb <- Tumor@reductions$umap@cell.embeddings
+
+
+show.velocity.on.embedding.cor(emb, vel = Tool(object = Tumor_loom, 
+slot = "RunVelocity"), n = 200, scale = "sqrt", cell.colors = ac(x = cell.colors, alpha = 0.5), 
+cex = 0.8, arrow.scale = 4, show.grid.flow = TRUE, min.grid.cell.mass = 0.5, grid.n = 100, arrow.lwd = 1, 
+do.par = FALSE, cell.border.alpha = 0.1, n.cores=45)
